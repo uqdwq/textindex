@@ -33,7 +33,7 @@ fn top_k(content: &str, filename: &str) {
 
     // let start_construction = Instant::now();
     parser::parse_content_top_k(&mut queries, &mut max_query, &content, &mut text_begin);
-
+    println!("{:?}", max_query);
     // starting the timer for construction after parsing, if parsing should be included move it before the parse_content_top_k call
     let start_construction = Instant::now();
 
