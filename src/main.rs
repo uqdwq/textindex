@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::{env, fs};
 use std::time::Instant;
-
+use suffix::SuffixTable;
 mod parser;
 mod construct_index;
 mod queries;
@@ -43,16 +43,17 @@ fn top_k(content: &str, filename: &str) {
 
     // 2nd step is to build the textindex i will be using SA (build with SAIS) and LCP-array 
 
-    
-    let mut sa: Vec<i32> = vec![-1; text.len() + 1];
-    let mut lcp: Vec<i32> = vec![0; text.len() + 1];
+
+    let mut sa: Vec<i32> = vec![-1; text.len()];
+    let mut lcp: Vec<i32> = vec![0; text.len()];
 
     construct_index::build_sa(&text, &mut sa, &content);
     construct_index::build_lcp(&text, &sa, &mut lcp);
-    println!("{:?}", sa);
+    
     let duration_construction = start_construction.elapsed();
     // 3rd step queries
     let start_q = Instant::now();
+    //println!("{:?}", sa);
     let result: String = queries::top_k_query(&queries, &max_query, &sa, &lcp);
     let duration_q = start_q.elapsed();
 
@@ -66,13 +67,19 @@ fn top_k(content: &str, filename: &str) {
 fn repeat(content: &str, filename: &str) {
     let start_construction = Instant::now();
     let text = content.as_bytes();
-    let mut sa: Vec<i32> = vec![-1; text.len() + 1];
-    let mut lcp: Vec<i32> = vec![0; text.len() + 1];
+    // let sat = SuffixTable::new(content);
+    let mut sa: Vec<i32> = vec![-1; text.len()];
+    let mut lcp: Vec<i32> = vec![0; text.len()];
+
     construct_index::build_sa(&text, &mut sa, &content);
     construct_index::build_lcp(&text, &sa, &mut lcp);
+    
     let duration_construction = start_construction.elapsed();
     let start_q = Instant::now();
-    let result = queries::longest_tandem_repeat(&text, &sa, &lcp);
+    // println!("{:?}", sat.suffix_bytes(1)[2]);
+    println!("{:?}", sa[1]);
+    // let result = queries::longest_tandem_repeat(&text, &sa, &lcp);
+    let result = "123";
     let duration_q = start_q.elapsed();
     println!("RESULT algo=repeat name=danielmeyer construction_time={} query_time={} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename)
 

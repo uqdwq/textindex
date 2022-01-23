@@ -1,2 +1,2 @@
 cargo build --release
-./target/release/textindex topk testfiles/testtopk1.txt
+./target/release/textindex repeat testfiles/dna.50MB
