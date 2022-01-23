@@ -35,7 +35,6 @@ fn top_k(content: &str, filename: &str) {
 
     // let start_construction = Instant::now();
     parser::parse_content_top_k(&mut queries, &mut max_query, &content, &mut text_begin);
-    println!("{:?}", content);
     // starting the timer for construction after parsing, if parsing should be included move it before the parse_content_top_k call
     let start_construction = Instant::now();
 
@@ -47,16 +46,17 @@ fn top_k(content: &str, filename: &str) {
     
     let mut sa: Vec<i32> = vec![-1; text.len() + 1];
     let mut lcp: Vec<i32> = vec![0; text.len() + 1];
+
     construct_index::build_sa(&text, &mut sa, &content);
     construct_index::build_lcp(&text, &sa, &mut lcp);
-
+    println!("{:?}", sa);
     let duration_construction = start_construction.elapsed();
     // 3rd step queries
     let start_q = Instant::now();
     let result: String = queries::top_k_query(&queries, &max_query, &sa, &lcp);
     let duration_q = start_q.elapsed();
 
-    println!("RESULT algo=topk name=danielmeyer construction_time={:?} query_time={:?} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename)
+    println!("RESULT algo=topk name=danielmeyer construction_time={:?} query_time={:?} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, "")
 }
 
 
