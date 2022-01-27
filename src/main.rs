@@ -5,7 +5,7 @@ use suffix::SuffixTable;
 mod parser;
 mod construct_index;
 mod queries;
-
+mod test;
 fn main() {
     let args: Vec<String> = env::args().collect();
     println!("{:?}", args);

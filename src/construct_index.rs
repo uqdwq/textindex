@@ -1,72 +1,79 @@
-use std::arch::x86_64::_mm_test_all_ones;
-use std::collections::{BTreeMap, BTreeSet};
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 use suffix::SuffixTable;
 use std::{env, fs};
+
+use crate::test;
 
 pub fn build_sa(text: &[u8], sa: &mut Vec<i32>, content: &str) {
     let start_construction = Instant::now();
     // .rev() changes iter direction to from right to left
     let mut last_b: u8 = std::u8::MAX;
     let mut last_t = -1;
-    let mut buckets_end: BTreeMap<u8, usize> = BTreeMap::new();
-    let mut buckets_begin: BTreeMap<u8, usize> = BTreeMap::new();
-    let mut lms: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut buckets_end = vec![0; 256];
+    let mut buckets_begin = vec![0; 256];
+    let mut lms: Vec<usize> = Vec::new();
+    let mut type_map: HashMap<usize, bool> = HashMap::new();
     println!("first {}", start_construction.elapsed().as_millis());
     for (i, b) in text.iter().enumerate().rev() {
         if b < &last_b {
-            last_t = -1
+            last_t = -1;
+            type_map.insert(i,false);// S type suffix
         } else if b > &last_b {
             if last_t == -1 {
-                lms.insert(&content[i+1..],i+1);
+                lms.push(i+1);
             }
+            type_map.insert(i,true);// L type suffix
             last_t = 1;
         }
         last_b = *b;
-        let bucket = buckets_end.entry(*b).or_insert(0);
-        let bucket2 = buckets_begin.entry(*b).or_insert(0);
-        *bucket += 1;
-        *bucket2 += 1;
+        buckets_begin[*b as usize] +=1;
+        buckets_end[*b as usize] +=1;
 
     }
+    println!("LMS count: {}", lms.len());
+    
     println!("lms and bucketsize {}", start_construction.elapsed().as_millis());
     let mut carry: usize = 0;
     for b in buckets_end.iter_mut() {
-        *b.1 += carry;
-        carry = *b.1;
+        *b += carry;
+        carry = *b;
     }
     let mut carry: usize = 0;
     for b in buckets_begin.iter_mut() {
         let temp = carry;
-        carry += *b.1;
-        *b.1 = temp;
+        carry += *b as usize;
+        *b = temp;
     }
+
     println!("bucket {}", start_construction.elapsed().as_millis());
-    let bucket_copy = buckets_end.clone();
+    let bucket_copy_end = buckets_end.clone();
     println!("copy {}", start_construction.elapsed().as_millis());
+    
     for suffix in lms.iter().rev() {
-        let index = buckets_end.get(&suffix.0.as_bytes()[0]).unwrap() - 1;
-        sa[index] = *suffix.1 as i32;
-        let bucket = buckets_end.entry(suffix.0.as_bytes()[0]).or_insert(0);
-        *bucket -= 1;
+        let index = buckets_end[text[*suffix as usize] as usize]- 1;
+        sa[index] = *suffix as i32;
+        buckets_end[text[*suffix as usize] as usize] -= 1;
     }
     println!("place lms {}", start_construction.elapsed().as_millis());
-    buckets_end = bucket_copy;
+    
+    buckets_end = bucket_copy_end;
     for i in 0..sa.len() {
         let ind = sa[i] - 1;
         if sa[i] != -1 && is_l(&text, ind as usize){
-            let bucket_begin = buckets_begin.entry(text[ind as usize]).or_insert(0);
-            sa[*bucket_begin] = ind;
-            *bucket_begin += 1;
+            let bucket_begin = buckets_begin[text[ind as usize] as usize];
+            sa[bucket_begin] = ind;
+            buckets_begin[text[ind as usize] as usize] += 1;
         }
     }
     println!("forward pass {}", start_construction.elapsed().as_millis());
     for i in (1..sa.len()).rev() {
         let ind = sa[i] - 1;
         if sa[i] != -1 && is_s(&text, ind as usize){
-            let bucket_end = buckets_end.entry(text[ind as usize]).or_insert(0);
-            sa[*bucket_end - 1] = ind;
-            *bucket_end -= 1;
+            let bucket_end = buckets_end[text[ind as usize] as usize];
+            sa[bucket_end - 1] = ind;
+            buckets_end[text[ind as usize] as usize] -= 1;
         }
     }
     println!("last backwards pass {}", start_construction.elapsed().as_millis());
@@ -108,82 +115,49 @@ pub fn is_s(text: &[u8], i: usize) -> bool {
 }
 pub fn build_lcp(text: &[u8], sa: &Vec<i32>, lcp: &Vec<i32>) {}
 
-
-
-#[test]
-fn vorlesung() {
-    let text = String::from("ababcabcabba\x00");
-    let corr = [12, 11, 0, 8, 5, 2, 10, 1,9, 6, 3, 7, 4];
-    let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
-    let mut assert = true;
-    for (i,s) in sa.iter().enumerate() {
-        if *s != corr[i] {
-            assert = false;
-        }
+// used as correctness test
+pub fn ultra_naive_suffix_array(text: &[u8], sa: &mut Vec<i32>, content: &str) {
+    let start_construction = Instant::now();
+    let mut suffixes: Vec<&str> = Vec::new();
+    for offset in 0..text.len() {
+        suffixes.push(&content[offset..])
     }
-    assert!(assert)
+    suffixes.sort();
+    for (i, s) in suffixes.iter().enumerate() {
+        sa[i] = (text.len() - s.len()) as i32
+    }
+    println!("naive time {:?}", start_construction.elapsed().as_millis())
 }
 
-#[test]
-fn camel() {
-    let text = String::from("camel\x00");
-    let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
-    let corr = [5,1,0,3,4,2];
-    let mut assert = true;
-    for (i,s) in sa.iter().enumerate() {
-        if *s != corr[i] {
-            assert = false;
+pub fn ultra_naive_lcp(lcp: &mut Vec<i32>,sa: &Vec<i32>, content: &[u8]) {
+    lcp[0] = 0;
+    for i in 1..sa.len() {
+        let mut l = 0;
+        while content[(sa[i - 1] + l) as usize] == content[(sa[i] + l) as usize] {
+            l += 1;
         }
+        lcp[i] = l;
     }
-    assert!(assert)
-}
-#[test]
-fn abracadabra() {
-    let text = String::from("abracadabra\x00");
-    let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
-    let corr = [11, 10, 7, 0, 3, 5, 8, 1, 4, 6, 9, 2];
-    let mut assert = true;
-    for (i,s) in sa.iter().enumerate() {
-        if *s != corr[i] {
-            assert = false;
-        }
-    }
-    assert!(assert)
 }
 
-#[test]
-fn problemsheet1() {
-    let mut text = fs::read_to_string("testfiles/example_text_repeats_1.txt").expect("232");
-    text.push('\x00');
-    let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
-    let corr = SuffixTable::new(&text);
-    let mut assert = true;
+pub fn phi_lcp(lcp: &mut Vec<i32>,sa: &Vec<i32>, test: &[u8]) {
+    let mut phi: Vec<i32> = vec![-1; sa.len()];
+    phi[sa.len() -1 ] = sa[sa.len() -1 ];
+    for i in 1..sa.len() {
+        phi[sa[i] as usize] = sa[i - 1];
+    }
+    let mut l: i32 = 0;
+    println!("check");
     for i in 0..sa.len() {
-        let x = sa[i] as usize;
-        if &text[x..] != corr.suffix(i) {
-            assert = false
+        let j = phi[i] as usize;
+        while test[i + (l as usize)] == test[j + (l as usize)] {
+            l = l + 1;
         }
-    }
-    assert!(assert)
-}
+        phi[i] = l;
+        l = std::cmp::max(0, l - 1);
 
-#[test]
-fn problemsheet2() {
-    let mut text = fs::read_to_string("testfiles/example_text_repeats_2.txt").expect("232");
-    text.push('\x00');
-    let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
-    let corr = SuffixTable::new(&text);
-    let mut assert = true;
-    for i in 0..sa.len() {
-        let x = sa[i] as usize;
-        if &text[x..] != corr.suffix(i) {
-            assert = false
-        }
     }
-    assert!(assert)
+    for i in 0..sa.len() {
+        lcp[i] = phi[sa[i] as usize];
+    }
 }
