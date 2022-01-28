@@ -65,7 +65,7 @@ fn vorlesung() {
     let text = String::from("ababcabcabba\x00");
     let corr = [12, 11, 0, 8, 5, 2, 10, 1,9, 6, 3, 7, 4];
     let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
+    build_sa(text.as_bytes(), &mut sa, &text, false);
     let mut assert = true;
     for (i,s) in sa.iter().enumerate() {
         if *s != corr[i] {
@@ -80,7 +80,7 @@ fn vorlesung() {
 fn camel() {
     let text = String::from("camel\x00");
     let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
+    build_sa(text.as_bytes(), &mut sa, &text, false);
     let corr = [5,1,0,3,4,2];
     let mut assert = true;
     for (i,s) in sa.iter().enumerate() {
@@ -94,7 +94,7 @@ fn camel() {
 fn abracadabra() {
     let text = String::from("abracadabra\x00");
     let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
+    build_sa(text.as_bytes(), &mut sa, &text, false);
     let corr = [11, 10, 7, 0, 3, 5, 8, 1, 4, 6, 9, 2];
     let mut assert = true;
     for (i,s) in sa.iter().enumerate() {
@@ -110,7 +110,7 @@ fn problemsheet1() {
     let mut text = fs::read_to_string("testfiles/example_text_repeats_1.txt").expect("232");
     text.push('\x00');
     let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
+    build_sa(text.as_bytes(), &mut sa, &text, false);
     let corr = SuffixTable::new(&text);
     let mut assert = true;
     for i in 0..sa.len() {
@@ -127,7 +127,7 @@ fn problemsheet2() {
     let mut text = fs::read_to_string("testfiles/example_text_repeats_2.txt").expect("232");
     text.push('\x00');
     let mut sa = vec![-1; text.len()];
-    build_sa(text.as_bytes(), &mut sa, &text);
+    build_sa(text.as_bytes(), &mut sa, &text, false);
     let corr = SuffixTable::new(&text);
     let mut assert = true;
     for i in 0..sa.len() {
@@ -137,4 +137,12 @@ fn problemsheet2() {
         }
     }
     assert!(assert)
+}
+
+#[test]
+pub fn walkthrough() {
+    let content = String::from("banaananaanana\x00");
+    let debug = true;
+    let mut sa = vec![-1; content.len()];
+    build_sa(content.as_bytes(), &mut sa, &content, debug)
 }

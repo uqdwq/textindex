@@ -5,6 +5,7 @@ use suffix::SuffixTable;
 mod parser;
 mod construct_index;
 mod queries;
+mod sais_i32;
 mod test;
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -47,7 +48,7 @@ fn top_k(content: &str, filename: &str) {
     let mut sa: Vec<i32> = vec![-1; text.len()];
     let mut lcp: Vec<i32> = vec![0; text.len()];
 
-    construct_index::build_sa(&text, &mut sa, &content);
+    construct_index::build_sa(&text, &mut sa, &content, false);
     construct_index::build_lcp(&text, &sa, &mut lcp);
     
     let duration_construction = start_construction.elapsed();
@@ -71,8 +72,8 @@ fn repeat(content: &str, filename: &str) {
     let mut sa: Vec<i32> = vec![-1; text.len()];
     let mut lcp: Vec<i32> = vec![0; text.len()];
 
-    construct_index::build_sa(&text, &mut sa, &content);
-    construct_index::build_lcp(&text, &sa, &mut lcp);
+    construct_index::build_sa(&text, &mut sa, &content, false);
+    construct_index::phi_lcp(&mut lcp, &sa, &text);
     
     let duration_construction = start_construction.elapsed();
     let start_q = Instant::now();
