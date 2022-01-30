@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::{env, fs};
 use std::time::Instant;
-use suffix::SuffixTable;
+
 mod parser;
 mod construct_index;
 mod queries;
-mod sais_i32;
+
+mod prefix_double;
+
 mod test;
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -30,8 +32,8 @@ fn top_k(content: &str, filename: &str) {
 
     // i also store the highest k for each patternlength to avoid multiple queues for the same length 
     // useful in for example: example_text_topk_2.txt
-    let mut queries: Vec<(u32,u32)> = Vec::new();
-    let mut max_query: HashMap<u32, u32> = HashMap::new();
+    let mut queries: Vec<(i32,i32)> = Vec::new();
+    let mut max_query: HashMap<i32, i32> = HashMap::new();
     let mut text_begin: usize = 0;
 
     // let start_construction = Instant::now();
@@ -47,18 +49,19 @@ fn top_k(content: &str, filename: &str) {
 
     let mut sa: Vec<i32> = vec![-1; text.len()];
     let mut lcp: Vec<i32> = vec![0; text.len()];
-
-    construct_index::build_sa(&text, &mut sa, &content, false);
+    prefix_double::build_sa(text, &mut sa);
+    // ultra_naive_suffix_array(&text, &mut sa, &content[text_begin..]);
+    // construct_index::build_sa(&text, &mut sa, &content, false);
     construct_index::build_lcp(&text, &sa, &mut lcp);
     
     let duration_construction = start_construction.elapsed();
     // 3rd step queries
     let start_q = Instant::now();
     //println!("{:?}", sa);
-    let result: String = queries::top_k_query(&queries, &max_query, &sa, &lcp);
+    let result: String = queries::top_k_query(&queries, &max_query, &sa, &lcp, &content[text_begin..]);
     let duration_q = start_q.elapsed();
 
-    println!("RESULT algo=topk name=danielmeyer construction_time={:?} query_time={:?} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, "")
+    println!("RESULT algo=topk name=danielmeyer construction_time={:?} query_time={:?} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename)
 }
 
 
@@ -72,15 +75,16 @@ fn repeat(content: &str, filename: &str) {
     let mut sa: Vec<i32> = vec![-1; text.len()];
     let mut lcp: Vec<i32> = vec![0; text.len()];
 
-    construct_index::build_sa(&text, &mut sa, &content, false);
+    construct_index::ultra_naive_suffix_array(&text, &mut sa, &content);
     construct_index::phi_lcp(&mut lcp, &sa, &text);
-    
+
     let duration_construction = start_construction.elapsed();
     let start_q = Instant::now();
     // println!("{:?}", sat.suffix_bytes(1)[2]);
-    println!("{:?}", sa[1]);
-    // let result = queries::longest_tandem_repeat(&text, &sa, &lcp);
-    let result = "123";
+    let result_val = queries::longest_tandem_repeat(&sa, &lcp);
+    let start = result_val.0 as usize;
+    let end = (result_val.0 + 2 * result_val.1) as usize;
+    let result = &content[start..end];
     let duration_q = start_q.elapsed();
     println!("RESULT algo=repeat name=danielmeyer construction_time={} query_time={} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename)
 

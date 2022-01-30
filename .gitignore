@@ -1,2 +1,3 @@
 /target
-/testfiles
+/bigtest
+.DS_Store
