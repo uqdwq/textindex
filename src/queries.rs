@@ -1,6 +1,31 @@
-use std::collections::{HashMap};
+use std::collections::{HashMap, BinaryHeap};
+use std::cmp::Ordering;
 
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct Tuple {
+    occ: i32,
+    first: i32,
+}
+
+// The priority queue depends on `Ord`.
+// Explicitly implement the trait so the queue becomes a min-heap
+// instead of a max-heap.
+impl Ord for Tuple {
+    fn cmp(&self, other: &Tuple) -> Ordering {
+        // Notice that the we flip the ordering on costs.
+        // In case of a tie we compare positions - this step is necessary
+        // to make implementations of `PartialEq` and `Ord` consistent.
+        self.occ.cmp(&other.occ).then(self.first.cmp(&other.first).reverse())
+    }
+}
+
+// `PartialOrd` needs to be implemented as well.
+impl PartialOrd for Tuple {
+    fn partial_cmp(&self, other: &Tuple) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 pub fn top_k_query<'a>(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa: &Vec<i32>, lcp: &Vec<i32>, text: &'a[u8]) -> Vec<&'a[u8]> {
 
     // we count all duplicated substring for asked lengths
@@ -25,18 +50,14 @@ pub fn top_k_query<'a>(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>,
             longest_pattern = *i.0;
         }
     }
-    // println!("long {}", longest_pattern);
     let mut lrs = 0;
     for i in 0..lcp.len() {
         if lcp[i] > lrs {
             lrs = lcp[i];
         }
     }
-    // println!("{:?}", sa);
-    // println!("{:?}", lcp);
-    // println!("max pattern {}", longest_pattern);
     // scanning once through lcp and sa
-    let mut map_by_l: HashMap<i32, HashMap<&[u8], (i32, i32)>> = HashMap::new();
+    let mut map_by_l: HashMap<i32, HashMap<&[u8], Tuple>> = HashMap::new();
     for i in max_query.iter() {
         map_by_l.insert(*i.0 as i32, HashMap::new());
     }
@@ -48,47 +69,41 @@ pub fn top_k_query<'a>(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>,
         let min = i32::min(lcp_i, longest_pattern as i32);
         // scan all duplicated substring in suffix sa[i]
         for j in 0..min {
-            // println!("{}", j);
             // this might be useful for sparse queries: asked lengths l=1,10000,10000000,10000000000 etc
             if map_by_l.contains_key(&(&j + 1)) {
                 // this gives us the hashmap for length j 
                 let map_l = map_by_l.entry(j + 1).or_insert(HashMap::new());
-                // we insert into map_l with key is a reference to our substring
+                // we insert into map_l with key as reference to our substring
                 // if it is the first time we see this substring we set the first_occ to i 
                 // => the sooner we discover it the smaller it is 
                 // then we add 1 to the amount of occs.
-                let pattern = map_l.entry(&text[sa_i as usize..(sa_i + j + 1) as usize]).or_insert((0, i as i32));
-                pattern.0 += 1;
+                let pattern = map_l.entry(&text[sa_i as usize..(sa_i + j + 1) as usize]).or_insert(Tuple {occ: 0, first: i as i32});
+                pattern.occ += 1;
             }
         }
 
     }
-    // println!("{:?}", map_by_l);
+    // now we are using a prioqueue to get all need patterns for each length
     let mut map_k = HashMap::new();
     for i in map_by_l.iter() {
-        if *i.0 == 1 {
-            println!("{:?}", i.1);
-        }
-        let mut all_scores: Vec<(i32, i32)> = i.1.into_iter()
+        let mut bin: BinaryHeap<Tuple> = i.1.into_iter()
                                         .map(|(_id, score)| *score)
                                         .collect();
-        all_scores.sort_by(|&(a0, a1), &(b0, b1)| a0.cmp(&b0).then(a1.cmp(&b1).reverse()));
-        if *i.0 == 1 {
-            println!("{:?}", all_scores);
-        }
+        // all_scores.sort_by(|&(a0, a1), &(b0, b1)| a0.cmp(&b0).then(a1.cmp(&b1).reverse()));
         let k = map_k.entry(*i.0).or_insert(Vec::new());
-        let max = usize::min(*max_query.get(i.0).unwrap() as usize, all_scores.len());
+        let max = usize::min(*max_query.get(i.0).unwrap() as usize, bin.len());
         for _ in 0..max {
-            k.push(all_scores.pop().unwrap());
+            k.push(bin.pop().unwrap());
             
         }
-        // println!("{} {:?}", *i.0, k);
+
 
     }
     let mut result = Vec::new();
+    // Now were anwsering each request
     for (length, k) in queries {
         let vec = map_k.get(length).unwrap();
-        // println!("{:?}", vec);
+        // case 1: the pattern isnt in the vec and instead is a unique pattern so we have to find it in den suffix array
         if *k > vec.len() as i32 {
             // we need the kth and already found vec.len with more than 1
             let mut find = k - vec.len() as i32;
@@ -99,32 +114,23 @@ pub fn top_k_query<'a>(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>,
                 if suffix_length >= *length && lcp_i < *length {
                     if find > 1 {
                         find -= 1;
-                        // println!("{} more we found {}", find, found);
                     } else {
                         let s_l = (sa_i + length) as usize;
                         result.push(&text[sa_i as usize..s_l]);
-                        // println!("{}", &text[sa_i as usize..s_l]);
                         break;
                     }
                 }
 
             }
+        // case 2 it is are duplicated pattern and it is a easy look up
         } else {
-            // println!("were here {:?} {}", vec[*k as usize - 1],length);
-            let sa_i = sa[vec[*k as usize - 1].1 as usize];
+            let sa_i = sa[vec[*k as usize - 1].first as usize];
             let begin = sa_i as usize;
-            // println!("{}", &text[begin..]);
             let end = begin + *length as usize;
             result.push(&text[begin..end]);
         }
     }
-    
-    // and then collect them into 
-
-    // now we have collected all the occurence of each relvant substring it's time to sort them
-    result.pop();
     return result;
-
 }
 
 
@@ -138,75 +144,51 @@ pub fn longest_tandem_repeat(sa: &Vec<i32>, lcp: &Vec<i32>) -> (i32, i32) {
             lrs = lcp[i];
         }
     }
-    println!("lrs {}", lrs);
+
     // we scan sa and lcp once
     let mut longest_tandem = 0;
     let mut tandem_start = 0; 
-
-
+    // idea for each suffix in sa we will check if the there is a p=aa with |a| = lcp[i + 1]
+    // example lcp[i + 1] is 2
+    // check now if sa[i] and sa[i+1] "allign"
+    // if the smaller sa value + lcp_i is the bigger sa value 
+    // we can do this until we find a lcp val thats smaller than lcp[i + 1] 
     for i in 1..(sa.len()-1) {
         
-
         let lcp_i = lcp[i + 1];
-        // if we have no common prefix it cant be a tandem
-        // we also know that all suffix before that arent elligble
-        // as they start with a after char
+        
+        // were looking for pattern with |a| = lcp_i so we wont find any with this suffix
+        if lcp_i == 0 {
+            continue;
+        }
+        // we already found a bigger one
         if lcp_i < longest_tandem {
             continue;
-        }   
+        }
+        // compare with everyone higher up in sa
         for j in (i+1)..(sa.len()) {
-
-            if lcp_i == 0 {
-                break;
-            }
+            
+            // until we find a smaller lcp val 
+            // all values can fit the allignment
             if lcp_i > lcp[j] {
                 break;
             }
-
+            // order for allginment
             let begin_t = i32::min(sa[i], sa[j]);
             let end_t = i32::max(sa[i], sa[j]);
-                // println!("sa_i {} b {} e {} {}",sa[i], begin_t, end_t, lcp_i);
-
+            // allginment
+            // if our to val have at least lcp_i many lcps
+            //  suffix in sa[i]: abra$
+            //  suffix in sa[j]: abraabra$  <- lcp_i is 4 
+            //  and we check if     abra$
+            //                  abraabra$ fits
             if begin_t + lcp_i == end_t {
-                println!("??? {} {} {} ", begin_t, end_t, lcp_i);
                 longest_tandem = lcp_i;
                 tandem_start = begin_t;
                 break;
             }
-            // if longest_tandem == lcp_i {
-            //     break;
-            // }
         }
-        // if the common prefix is smaller than the longest tandem we already we dont need to check
-
-        // now we have a lcp[i] > 0 and its a possible candidate for |a| 
-        // idea if the lcp[1] = lcp[2] = lcp[3], 0,1,2,3 have the same lcp and we have to check them all
-        // println!("share {}", share_lcp);
-            // for j in share_lcp..i {
-            //     if longest_tandem >= lcp_i {
-            //         break;
-            //     }
-            //     let compare_lcp = i32::min(lcp_i,lcp[j + 1]);
-            //     let begin_t = i32::min(sa[i], sa[j]);
-            //     let end_t = i32::max(sa[i], sa[j]);
-            //     // println!("sa_i {} b {} e {} {}",sa[i], begin_t, end_t, lcp_i);
-
-            //     if begin_t + compare_lcp == end_t {
-            //         // println!("{} {}", begin_t, end_t);
-            //         longest_tandem = compare_lcp;
-            //         tandem_start = begin_t;
-            //     }
-
-                
-            // }
-    
-        // if lcp_i >= current_lcp {
-        //     share_lcp += 1;
-        // } else {
-        //     current_lcp = lcp_i;
-        // }
-
-        // we found that the lrs is a tandem can stop the search
+        // there isnt anything better 
         if longest_tandem == lrs {
             break;
         }
@@ -215,31 +197,3 @@ pub fn longest_tandem_repeat(sa: &Vec<i32>, lcp: &Vec<i32>) -> (i32, i32) {
     }
     return (tandem_start, longest_tandem);
 }
-
-//this will produce a longest tandem but wont take order into account
-
-// pub fn walkthrough2() {
-//     let text = String::from("banaananaanana\x00");
-//     let mut sa = vec![-1; text.len()];
-//     let mut lcp: Vec<i32> = vec![0; text.len()];
-//     build_sa(text.as_bytes(), &mut sa);
-//     build_lcp(&text.as_bytes(), &sa, &mut lcp);
-//     println!("lcp  {:?}", lcp);
-//     let x = longest_tandem_repeat(&text.as_bytes(), &sa, &lcp);
-//     println!("{:?}", x);
-//     let y = ultra_naive_tandem(&text);
-//     assert!(x.1 == y.1);
-// }
-// #[test]
-// fn problemsheet2() {
-//     let mut text = fs::read_to_string("testfiles/example_text_repeats_2.txt").expect("232");
-//     let mut sa = vec![-1; text.len()];
-//     let mut lcp: Vec<i32> = vec![0; text.len()];
-//     build_sa(text.as_bytes(), &mut sa);
-//     build_lcp(&text.as_bytes(), &sa, &mut lcp);
-//     println!("lcp  {:?}", lcp);
-//     let x = longest_tandem_repeat(&text.as_bytes(), &sa, &lcp);
-//     println!("{:?}", x);
-//     let y = ultra_naive_tandem(&text);
-//     assert!(x.1 == y.1);
-// }

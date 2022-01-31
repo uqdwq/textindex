@@ -1,31 +1,25 @@
 use std::collections::HashMap;
-use std::{env, fs, result};
+use std::{env, fs};
 use std::time::Instant;
 use std::str;
 mod parser;
 mod construct_index;
 mod queries;
 
-mod prefix_double;
-
-mod test;
 fn main() {
     let args: Vec<String> = env::args().collect();
-    println!("{:?}", args);
     let mode = &args[1];
     let filename = &args[2];
-    let mut content = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    // strings in rust arent NUL-terminated so we need to add a NULBYTE as sentinel
-    content.push('\x00');
+    let mut content = fs::read(filename).expect("Something went wrong reading the file");
+    content.push(0);
     match mode.as_str() {
         "topk" => top_k(&content, &filename),
-        "repeat" => repeat(&content.as_bytes(), &filename),
-        "echo" => print!("{}",content),
+        "repeat" => repeat(&content, &filename),
         _ => println!("{} isn't a valid parameter, please use echo, topk or repeat", mode)
     }
 }
 
-fn top_k(content: &str, filename: &str) {
+fn top_k(content: &[u8], filename: &str) {
 
     // first step is to parse the file, i wont include this step into the time measurement
    
@@ -42,14 +36,14 @@ fn top_k(content: &str, filename: &str) {
     let start_construction = Instant::now();
 
     // strings in rust are stored in unicode and know both their length in unicodechars and bytes. so this is cheap 
-    let text = content[text_begin..].as_bytes();
+    let text = &content[text_begin..];
 
-    // 2nd step is to build the textindex i will be using SA (build with SAIS) and LCP-array 
+    // 2nd step is to build the textindex i will be using SA (build with prefix doubling ) and LCP-array 
 
 
     let mut sa: Vec<i32> = vec![-1; text.len()];
     let mut lcp: Vec<i32> = vec![0; text.len()];
-    prefix_double::build_sa(text, &mut sa);
+    construct_index::build_sa(text, &mut sa);
     // ultra_naive_suffix_array(&text, &mut sa, &content[text_begin..]);
     // construct_index::build_sa(&text, &mut sa, &content, false);
     construct_index::build_lcp(&text, &sa, &mut lcp);
@@ -57,10 +51,13 @@ fn top_k(content: &str, filename: &str) {
     let duration_construction = start_construction.elapsed();
     // 3rd step queries
     let start_q = Instant::now();
-    //println!("{:?}", sa);
-    let result= queries::top_k_query(&queries, &max_query, &sa, &lcp, &content.as_bytes()[text_begin..]);
+
+    let result= queries::top_k_query(&queries, &max_query, &sa, &lcp, &content[text_begin..]);
     let duration_q = start_q.elapsed();
     let mut result_string: String = String::from("");
+      
+    // if the pattern is valid utf8 unicode i will print the so, else i will 
+    // just print the byte slice with the interal representation: [b0,b1,b2]
     for i in 0..result.len() {
         let result_bool = result[i].is_ascii();
         if result_bool {
@@ -86,17 +83,16 @@ fn repeat(text: &[u8], filename: &str) {
     let mut sa: Vec<i32> = vec![-1; text.len()];
     let mut lcp: Vec<i32> = vec![0; text.len()];
 
-    prefix_double::build_sa(&text, &mut sa);
+    construct_index::build_sa(&text, &mut sa);
     construct_index::phi_lcp(&mut lcp, &sa, &text);
 
     let duration_construction = start_construction.elapsed();
     let start_q = Instant::now();
-    // println!("{:?}", sat.suffix_bytes(1)[2]);
     let result_val = queries::longest_tandem_repeat(&sa, &lcp);
+    // result is starting point and length of a so 2* vor aa
     let start = result_val.0 as usize;
     let end = (result_val.0 + 2 * result_val.1) as usize;
     let duration_q = start_q.elapsed();
-    println!("{:?} {} {}", result_val, start, end);
     let result_bool = text[start..end].is_ascii();
     let result: String;
     // if the pattern is valid utf8 unicode i will print the so, else i will 
@@ -110,16 +106,5 @@ fn repeat(text: &[u8], filename: &str) {
         result = format!("{:?}", &text[start..end]);
     }
     println!("RESULT algo=repeat name=danielmeyer construction_time={} query_time={} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename);
-    println!("{} {}",result.len(), result.len() % 2 == 0);
-    let mid = result.len()/2;
-    for i in 0..mid {
-        if &result.chars().nth(i).unwrap() != &result.chars().nth(mid + i).unwrap() {
-            println!(" {} {} {}" ,&result.chars().nth(i).unwrap(), &result.chars().nth(mid + i).unwrap(), i);
-        }
-    }
-    // println!("{:?}", &text[728763..728763+48]);
-    // println!("{:?}", &text[728811..728811+48]);
-    // println!("{:?}", &lcp[728763]);
-    // println!("{:?}", &lcp[728811]);
 }    
 
