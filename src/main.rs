@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::{env, fs};
+use std::{env, fs, result};
 use std::time::Instant;
-
+use std::str;
 mod parser;
 mod construct_index;
 mod queries;
@@ -19,7 +19,7 @@ fn main() {
     content.push('\x00');
     match mode.as_str() {
         "topk" => top_k(&content, &filename),
-        "repeat" => repeat(&content, &filename),
+        "repeat" => repeat(&content.as_bytes(), &filename),
         "echo" => print!("{}",content),
         _ => println!("{} isn't a valid parameter, please use echo, topk or repeat", mode)
     }
@@ -58,24 +58,35 @@ fn top_k(content: &str, filename: &str) {
     // 3rd step queries
     let start_q = Instant::now();
     //println!("{:?}", sa);
-    let result: String = queries::top_k_query(&queries, &max_query, &sa, &lcp, &content[text_begin..]);
+    let result= queries::top_k_query(&queries, &max_query, &sa, &lcp, &content.as_bytes()[text_begin..]);
     let duration_q = start_q.elapsed();
-
-    println!("RESULT algo=topk name=danielmeyer construction_time={:?} query_time={:?} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename)
+    let mut result_string: String = String::from("");
+    for i in 0..result.len() {
+        let result_bool = result[i].is_ascii();
+        if result_bool {
+            result_string.push_str(str::from_utf8(result[i]).unwrap());
+            result_string.push(';');
+        } else {
+            let x = format!("{:?}", result[i]);
+            result_string.push_str(&x);
+            result_string.push(';');
+        }
+    }
+    result_string.pop();
+    println!("RESULT algo=topk name=danielmeyer construction_time={:?} query_time={:?} solutions={:?} file={}", duration_construction.as_millis(), duration_q.as_millis(),result_string, filename)
 }
 
 
 
 
 
-fn repeat(content: &str, filename: &str) {
+fn repeat(text: &[u8], filename: &str) {
     let start_construction = Instant::now();
-    let text = content.as_bytes();
     // let sat = SuffixTable::new(content);
     let mut sa: Vec<i32> = vec![-1; text.len()];
     let mut lcp: Vec<i32> = vec![0; text.len()];
 
-    construct_index::ultra_naive_suffix_array(&text, &mut sa, &content);
+    prefix_double::build_sa(&text, &mut sa);
     construct_index::phi_lcp(&mut lcp, &sa, &text);
 
     let duration_construction = start_construction.elapsed();
@@ -84,9 +95,31 @@ fn repeat(content: &str, filename: &str) {
     let result_val = queries::longest_tandem_repeat(&sa, &lcp);
     let start = result_val.0 as usize;
     let end = (result_val.0 + 2 * result_val.1) as usize;
-    let result = &content[start..end];
     let duration_q = start_q.elapsed();
-    println!("RESULT algo=repeat name=danielmeyer construction_time={} query_time={} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename)
-
-}
+    println!("{:?} {} {}", result_val, start, end);
+    let result_bool = text[start..end].is_ascii();
+    let result: String;
+    // if the pattern is valid utf8 unicode i will print the so, else i will 
+    // just print the byte slice with the interal representation: [b0,b1,b2]
+    if result_bool {
+        result = match str::from_utf8(&text[start..end]) {
+            Ok(v) => v.to_string(),
+            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+        };
+    } else {
+        result = format!("{:?}", &text[start..end]);
+    }
+    println!("RESULT algo=repeat name=danielmeyer construction_time={} query_time={} solutions={} file={}", duration_construction.as_millis(), duration_q.as_millis(),result, filename);
+    println!("{} {}",result.len(), result.len() % 2 == 0);
+    let mid = result.len()/2;
+    for i in 0..mid {
+        if &result.chars().nth(i).unwrap() != &result.chars().nth(mid + i).unwrap() {
+            println!(" {} {} {}" ,&result.chars().nth(i).unwrap(), &result.chars().nth(mid + i).unwrap(), i);
+        }
+    }
+    // println!("{:?}", &text[728763..728763+48]);
+    // println!("{:?}", &text[728811..728811+48]);
+    // println!("{:?}", &lcp[728763]);
+    // println!("{:?}", &lcp[728811]);
+}    
 

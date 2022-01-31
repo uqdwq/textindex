@@ -1,7 +1,7 @@
 use std::collections::{HashMap};
 
 
-pub fn top_k_query(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa: &Vec<i32>, lcp: &Vec<i32>, text: &str) -> String {
+pub fn top_k_query<'a>(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa: &Vec<i32>, lcp: &Vec<i32>, text: &'a[u8]) -> Vec<&'a[u8]> {
 
     // we count all duplicated substring for asked lengths
 
@@ -36,7 +36,7 @@ pub fn top_k_query(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa:
     // println!("{:?}", lcp);
     // println!("max pattern {}", longest_pattern);
     // scanning once through lcp and sa
-    let mut map_by_l: HashMap<i32, HashMap<&str, (i32, i32)>> = HashMap::new();
+    let mut map_by_l: HashMap<i32, HashMap<&[u8], (i32, i32)>> = HashMap::new();
     for i in max_query.iter() {
         map_by_l.insert(*i.0 as i32, HashMap::new());
     }
@@ -85,7 +85,7 @@ pub fn top_k_query(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa:
         // println!("{} {:?}", *i.0, k);
 
     }
-    let mut result = "".to_owned();
+    let mut result = Vec::new();
     for (length, k) in queries {
         let vec = map_k.get(length).unwrap();
         // println!("{:?}", vec);
@@ -102,9 +102,8 @@ pub fn top_k_query(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa:
                         // println!("{} more we found {}", find, found);
                     } else {
                         let s_l = (sa_i + length) as usize;
-                        result.push_str(&text[sa_i as usize..s_l]);
-                        println!("{}", &text[sa_i as usize..s_l]);
-                        result.push(';');
+                        result.push(&text[sa_i as usize..s_l]);
+                        // println!("{}", &text[sa_i as usize..s_l]);
                         break;
                     }
                 }
@@ -116,8 +115,7 @@ pub fn top_k_query(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa:
             let begin = sa_i as usize;
             // println!("{}", &text[begin..]);
             let end = begin + *length as usize;
-            result.push_str(&text[begin..end]);
-            result.push(';');
+            result.push(&text[begin..end]);
         }
     }
     
@@ -132,6 +130,7 @@ pub fn top_k_query(queries: &Vec<(i32, i32)>, max_query: &HashMap<i32, i32>, sa:
 
 
 pub fn longest_tandem_repeat(sa: &Vec<i32>, lcp: &Vec<i32>) -> (i32, i32) {
+    
     // find longest repeating substring <- is upper bound for longest tandem repeat
     let mut lrs = 0;
     for i in 0..lcp.len() {
@@ -139,44 +138,73 @@ pub fn longest_tandem_repeat(sa: &Vec<i32>, lcp: &Vec<i32>) -> (i32, i32) {
             lrs = lcp[i];
         }
     }
+    println!("lrs {}", lrs);
     // we scan sa and lcp once
     let mut longest_tandem = 0;
     let mut tandem_start = 0; 
-    let mut share_lcp = 0; 
-    let mut current_lcp = 0;
-    for i in 0..sa.len() {
-        let lcp_i = lcp[i];
-        // println!("lcp_i {} curr_lcp {}", lcp_i, current_lcp);
-        // if we have to common prefix it cant be a tandem
-        if lcp[i] == 0 {
-            current_lcp = 0;
+
+
+    for i in 1..(sa.len()-1) {
+        
+
+        let lcp_i = lcp[i + 1];
+        // if we have no common prefix it cant be a tandem
+        // we also know that all suffix before that arent elligble
+        // as they start with a after char
+        if lcp_i < longest_tandem {
             continue;
+        }   
+        for j in (i+1)..(sa.len()) {
+
+            if lcp_i == 0 {
+                break;
+            }
+            if lcp_i > lcp[j] {
+                break;
+            }
+
+            let begin_t = i32::min(sa[i], sa[j]);
+            let end_t = i32::max(sa[i], sa[j]);
+                // println!("sa_i {} b {} e {} {}",sa[i], begin_t, end_t, lcp_i);
+
+            if begin_t + lcp_i == end_t {
+                println!("??? {} {} {} ", begin_t, end_t, lcp_i);
+                longest_tandem = lcp_i;
+                tandem_start = begin_t;
+                break;
+            }
+            // if longest_tandem == lcp_i {
+            //     break;
+            // }
         }
         // if the common prefix is smaller than the longest tandem we already we dont need to check
-        if lcp[i] < longest_tandem {
-            current_lcp = lcp[i];
-            continue;
-        }
+
         // now we have a lcp[i] > 0 and its a possible candidate for |a| 
         // idea if the lcp[1] = lcp[2] = lcp[3], 0,1,2,3 have the same lcp and we have to check them all
         // println!("share {}", share_lcp);
-        for j in 1..(share_lcp+2) {
-            
-            let begin_t = i32::min(sa[i], sa[i - j]);
-            let end_t = i32::max(sa[i], sa[i - j]);
-            // println!("sa_i {} b {} e {} {}",sa[i], begin_t, end_t, lcp_i);
-            if begin_t + lcp_i == end_t {
-                longest_tandem = lcp_i;
-                tandem_start = begin_t;
-            }
-        }
+            // for j in share_lcp..i {
+            //     if longest_tandem >= lcp_i {
+            //         break;
+            //     }
+            //     let compare_lcp = i32::min(lcp_i,lcp[j + 1]);
+            //     let begin_t = i32::min(sa[i], sa[j]);
+            //     let end_t = i32::max(sa[i], sa[j]);
+            //     // println!("sa_i {} b {} e {} {}",sa[i], begin_t, end_t, lcp_i);
 
-        if lcp_i == current_lcp {
-            share_lcp += 1;
-        } else {
-            current_lcp = lcp_i;
-            share_lcp = 1;
-        }
+            //     if begin_t + compare_lcp == end_t {
+            //         // println!("{} {}", begin_t, end_t);
+            //         longest_tandem = compare_lcp;
+            //         tandem_start = begin_t;
+            //     }
+
+                
+            // }
+    
+        // if lcp_i >= current_lcp {
+        //     share_lcp += 1;
+        // } else {
+        //     current_lcp = lcp_i;
+        // }
 
         // we found that the lrs is a tandem can stop the search
         if longest_tandem == lrs {
